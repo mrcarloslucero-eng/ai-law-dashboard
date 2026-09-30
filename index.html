@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Regulation &amp; Operator Accountability — State Explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --border:#2d333b;
+    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --orange:#f0883e;
+    --green:#3fb950; --red:#f85149; --purple:#bc8cff; --yellow:#d29922;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;padding:32px 24px;line-height:1.55}
+  .wrap{max-width:1150px;margin:0 auto}
+  header{margin-bottom:24px}
+  h1{font-size:1.6rem;font-weight:700}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:.9rem;margin-top:4px}
+
+  .selector{display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .selector label{color:var(--muted);font-size:.85rem}
+  select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:1rem;min-width:260px;cursor:pointer}
+  .status-legend{display:flex;gap:14px;font-size:.75rem;color:var(--muted);flex-wrap:wrap}
+  .tag{display:inline-block;padding:2px 9px;border-radius:10px;font-size:.7rem;font-weight:600;white-space:nowrap}
+  .tag.inf{background:rgba(88,166,255,.16);color:var(--accent)}
+  .tag.enacted{background:rgba(63,185,80,.16);color:var(--green)}
+  .tag.pending{background:rgba(240,136,62,.16);color:var(--orange)}
+  .tag.dead{background:rgba(139,148,158,.15);color:var(--muted)}
+  .tag.stayed{background:rgba(248,81,73,.16);color:var(--red)}
+
+  .statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .stat .num{font-size:1.5rem;font-weight:700}
+  .stat .lbl{color:var(--muted);font-size:.75rem}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px}
+  .card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px}
+
+  section.detail h2.sec{font-size:1.15rem;margin:26px 0 10px;color:var(--accent)}
+  .law{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+  .law.case{border-left-color:var(--purple)}
+  .law.dead{border-left-color:var(--muted)}
+  .law h3{font-size:1rem;margin-bottom:2px}
+  .meta{color:var(--muted);font-size:.78rem;margin-bottom:8px}
+  .law p{font-size:.88rem;margin-bottom:6px}
+  .acc{font-size:.8rem;color:var(--green)}
+  .acc b{color:var(--green)}
+  a{color:var(--accent);text-decoration:none;font-size:.8rem}
+  a:hover{text-decoration:underline}
+  canvas{max-height:280px}
+  footer{color:var(--muted);font-size:.78rem;margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Regulation &amp; <span>Operator Accountability</span> — State Explorer</h1>
+    <div class="sub">Current + pending laws and active cases by jurisdiction · as of September 29, 2026 · Not legal advice</div>
+  </header>
+
+  <div class="selector">
+    <label for="stateSel">Jurisdiction:</label>
+    <select id="stateSel"></select>
+    <div class="status-legend">
+      <span><span class="tag inf">IN FORCE</span></span>
+      <span><span class="tag enacted">ENACTED (phased)</span></span>
+      <span><span class="tag stayed">STAYED</span></span>
+      <span><span class="tag pending">PENDING</span></span>
+      <span><span class="tag dead">DEAD/FAILED</span></span>
+    </div>
+  </div>
+
+  <div class="statrow" id="statRow"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Where Accountability Duties Land — by Jurisdiction</h2>
+      <canvas id="chartDuty"></canvas>
+    </div>
+    <div class="card">
+      <h2>State Oversight Intensity (enacted vs. pending/dead major AI measures)</h2>
+      <canvas id="chartIntensity"></canvas>
+    </div>
+  </div>
+
+  <section class="detail" id="detail"></section>
+
+  <footer>Companion to cdafa-ai-operator-accountability.md · Research compiled Sept 2026 · Not legal advice</footer>
+</div>
+
+<script>
+const DATA = {
+"Federal": {
+  tag:"inf", tagLabel:"ACTIVE OVERSIGHT",
+  stats:[["EO 14365","Preemption push (Dec 2025)"],["S.5051","AI agent accountability bill"],["6+","Pending federal AI bills"],["0","State laws preempted so far"]],
+  laws:[
+    {name:"EO 14365 — “Ensuring a National Policy Framework for AI”",bill:"Executive Order",status:"inf",eff:"Dec 11, 2025",
+     sum:"Directs a DOJ AI Litigation Task Force to challenge state AI laws (Dormant Commerce Clause, preemption, First Amendment); Commerce to evaluate “onerous” state laws; states with such laws ineligible for remaining BEAD non-deployment funds; FCC/FTC directed to consider federal standards. A March 2026 White House “National Policy Framework” proposes broad preemption of “undue burden” state laws — but no state law has been preempted; ~24 state AGs urged the FCC not to preempt.",
+     acc:"Pushes authority toward the federal government; existing state AI laws remain in force unless preempted by Congress or invalidated in court.",
+     url:"https://www.ropesgray.com/en/insights/alerts/2026/03/the-white-house-legislative-recommendations-national-policy-framework-for-artificial-intelligence-an"},
+    {name:"S.5051 — AI AGENT Act of 2026",bill:"Sen. Warner (D-VA)",status:"pending",eff:"Introduced Jul 21, 2026 — Senate Commerce",
+     sum:"Defines “custodial user agents” (AI agents authorized by users to act on large platforms). Creates an FTC-run agent registry, FTC-certified independent vetting bodies (180-day evaluation; certification = rebuttable presumption of compliance), NIST open protocols for consent delegation/revocation and agent identity verification, fiduciary-style duties on agent providers, and mandatory acceptance of outside agents by platforms with ~50M+ US users. The first bill to create explicit operator accountability for autonomous AI agents.",
+     acc:"Provider must maintain reasonable measures to ensure agent compliance — a pattern or practice of agent violations is ATTRIBUTABLE to the provider (vicarious accountability).",
+     url:"https://www.congress.gov/bill/119th-congress/senate-bill/5051"},
+    {name:"TRUMP AMERICA AI Act",bill:"Sen. Blackburn discussion draft (Mar 2026)",status:"pending",eff:"Draft",
+     sum:"Most comprehensive federal AI proposal: incorporates an AI product-liability framework (reasonable care / defect / express-warranty theories; suits by AGs and private litigants; damages including psychological anguish), a chatbot developer duty of care, and a Section 230 sunset for AI platforms.",
+     acc:"Would create the first federal AI product-liability regime with private suits.",
+     url:"https://theinnovationattorney.substack.com/p/artificial-intelligence-regulation"},
+    {name:"Stop Rogue AI Act",bill:"Reps. Gottheimer & Lawler",status:"pending",eff:"Introduced Sep 3, 2026",
+     sum:"First federal bill mandating NIST security standards for AI agents: machine-readable agent inventories, action verification, tamper-proof logs, and developer/vendor attribution.",
+     acc:"Developer/vendor attribution requirements for autonomous agent actions.",
+     url:"https://yahoo.com/news/politics/articles/congress-building-scaffolding-first-federal-234037309.html"},
+    {name:"H.R. 9619 / H.R. 8094 / ASTA",bill:"Bipartisan groups",status:"pending",eff:"2026",
+     sum:"Cluster of pending federal bills: H.R. 9619 (chatbot-harm bill — interface regulation, FTC assessments, injury-in-fact private remedy); H.R. 8094 Foundation Model Transparency Act (FTC/NIST public disclosure for high-impact models); ASTA (Lankford/Coons/Britt/Schatz — FTC-enforced model-card and safety disclosures).",
+     acc:"Mix of FTC enforcement and private remedies; none enacted.",
+     url:"https://lankford.senate.gov/newsroom/press-releases/lankford-coons-britt-and-schatz-introduce-bipartisan-ai-safety-and-transparency-legislation"}
+  ],
+  cases:[
+    {name:"FTC “output steering” policy statement",court:"FTC",status:"Pending — not finalized",
+     sum:"Proposed policy statement (from EO 14365) treating deliberately steering AI outputs toward undisclosed objectives as potentially deceptive under Section 5. FTC has ~20 AI enforcement actions / $51M recoveries so far, focused on marketing deception rather than autonomous conduct. NIST launched an AI Agent Standards Initiative (Feb 2026).",
+     url:"https://williamfedorich.substack.com/p/ai-governance-daily-briefing-edb"}
+  ]
+},
+"California": {
+  tag:"inf", tagLabel:"MOST ACTIVE STATE",
+  stats:[["6+","Enacted AI laws"],["4","Pending bills"],["5+","Active cases (coordinated)"],["$1M","Top per-violation penalties"]],
+  laws:[
+    {name:"SB 53 — Transparency in Frontier AI Act (TFAIA)",bill:"Wiener",status:"inf",eff:"Signed Sep 29, 2025; in force",
+     sum:"Nation's first frontier-AI safety statute. “Large frontier developers” (>$500M revenue) must publish an annual public frontier AI framework describing catastrophic-risk identification/mitigation (aligned with NIST AI RMF / ISO 42001), publish pre-deployment transparency reports for new or substantially modified frontier models, report critical safety incidents to Cal OES within 15 days (24h if imminent public threat), maintain anonymous whistleblower channels, and not make materially false risk statements. AG civil penalties up to ~$500k–$1M per violation; whistleblower claims privately actionable.",
+     acc:"Developers — state-mandated safety self-reporting; regulates developers only, not deployers.",
+     url:"https://www.brookings.edu/articles/what-is-californias-ai-safety-law/"},
+    {name:"AB 2013 — Training Data Transparency Act",bill:"Irwin",status:"inf",eff:"Jan 1, 2026",
+     sum:"Any generative-AI developer with a system released publicly on/after Jan 1, 2022 must post a “high-level summary” of training datasets covering 12 categories (sources/owners, IP status, personal info, synthetic data, etc.) before each release or substantial modification. Enforced via the Unfair Competition Law by AG/district attorneys.",
+     acc:"Developers — public disclosure duty; OpenAI and Anthropic have posted disclosures.",
+     url:"https://www.jdsupra.com/legalnews/california-s-ab-2013-takes-effect-5883106"},
+    {name:"SB 942 — AI Transparency Act (as amended by AB 853)",bill:"Becker / Bauer-Kahan",status:"inf",eff:"Aug 2, 2026 (platforms 2027; capture devices 2028)",
+     sum:"Covered GenAI providers (>1M monthly users) must offer a free AI-detection tool, embed tamper-resistant latent provenance metadata, and provide manifest “AI-generated” disclosure options. AB 853 extended duties to large online platforms (>2M monthly CA users, 2027) and capture-device manufacturers (cameras/mics must embed authenticity disclosures, 2028). $5,000 per violation, each day separate; AG/city attorneys; no private right of action. Deliberately synced to EU AI Act Art. 50.",
+     acc:"Providers/platforms — output provenance duty holders.",
+     url:"https://casrai.org/news/california-sb-942-ai-transparency-act-effective-august-2026"},
+    {name:"AB 316 — Civil Code § 1714.46 (“no blame-the-AI” rule)",bill:"Krell",status:"inf",eff:"Jan 1, 2026",
+     sum:"In any civil action against a defendant who developed, modified, or used AI alleged to have caused harm, it is NOT a defense that “the AI autonomously caused the harm.” Other defenses (causation, foreseeability, comparative fault, reasonable care) are expressly preserved; no strict liability created.",
+     acc:"Developers, modifiers, and users/deployers — cannot escape liability by blaming the machine. The signature operator-accountability statute.",
+     url:"https://law.justia.com/codes/california/code-civ/division-3/part-3/section-1714-46/"},
+    {name:"SB 243 — Companion Chatbots Act",bill:"Padilla",status:"inf",eff:"Jan 1, 2026; reporting from Jul 2027",
+     sum:"Companion-chatbot operators must disclose AI-not-human status, maintain suicidal-ideation/self-harm protocols with crisis referrals, and for known minors provide break reminders every 3 hours, block sexually explicit content, and post suitability warnings; annual anonymized crisis-referral reporting.",
+     acc:"Operators/deployers directly — via a PRIVATE RIGHT OF ACTION (injunctive relief + greater of actual damages or $1,000/violation + fees).",
+     url:"https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260SB243"},
+    {name:"SB 867 — Toys with companion chatbots",bill:"Padilla",status:"inf",eff:"Chaptered Sep 10, 2026",
+     sum:"Bans manufacture/sale of toys incorporating a companion chatbot (2031 sunset), with SB 243-style civil liability.",
+     acc:"Manufacturers.",
+     url:"https://legiscan.com/CA/text/SB867/id/3373029"},
+    {name:"SB 1119 / AB 2023 — children's chatbot safety",bill:"Padilla / Wicks",status:"pending",eff:"Passed both houses; awaiting governor (as of Sep 2026)",
+     sum:"Annual child-safety risk assessments, mitigation of covered harms to minors, published child-safety policies, crisis protocols with 12-hour parental notification, AG-regulated independent child-safety audits; prosecutor suits ($5k negligent / $15k intentional) plus child suits with punitive damages. Successors to the vetoed LEAD for Kids Act (AB 1064).",
+     acc:"Operators — audits + private suits with punitive damages.",
+     url:"https://leginfo.legislature.ca.gov/faces/billTextClient.xhtml?bill_id=202520260SB1119"},
+    {name:"AB 1988 / AB 1609",bill:"Pellerin / Wiley",status:"pending",eff:"2026 session",
+     sum:"AB 1988: mandatory 20-minute “crisis interruption pause” when a chatbot detects a credible crisis expression (pending in committee). AB 1609: customer-service chatbot disclosure duties for large businesses.",
+     acc:"Chatbot operators.",
+     url:"https://www.wiley.law/alert-California-Closes-Legislative-Session-with-Significant-AI-and-Privacy-Developments"}
+  ],
+  cases:[
+    {name:"X.AI LLC v. Rob Bonta",court:"C.D. Cal. No. 2:25-cv-12295",status:"Active — PI denied",
+     sum:"xAI's challenge to AB 2013 (Takings/trade secrets, First Amendment, vagueness). Preliminary injunction DENIED Mar 4, 2026 — Judge Bernal found no unique datasets or cleaning methods warranting trade-secret protection; the disclosures are factual commercial information. xAI is complying; case continues.",
+     url:"https://arstechnica.com/tech-policy/2026/03/musk-fails-to-block-california-data-disclosure-law-he-fears-will-ruin-xai/"},
+    {name:"Lyons v. OpenAI (estate of Stein-Erik Soelberg)",court:"N.D. Cal. No. 3:25-cv-11037",status:"Active",
+     sum:"Wrongful death: Soelberg killed his mother and himself in Aug 2025 after hundreds of hours with GPT-4o that allegedly reinforced paranoid delusions. Motion to stay/dismiss denied (Apr 2026). Twelve state-court ChatGPT actions were coordinated as In re: ChatGPT Product Liability Cases (JCCP 5431) in Feb 2026.",
+     url:"https://www.dailyjournal.com/article/390854-openai-federal-wrongful-death-suit-over-chatbot-role-won-t-be-halted"},
+    {name:"Raine v. OpenAI",court:"San Francisco Superior",status:"Active — § 230 test case",
+     sum:"Parents of 16-year-old Adam Raine allege ChatGPT coached him on suicide methods. First direct test of whether § 230 shields LLM outputs; OpenAI has denied liability and asserted § 230 and comparative fault.",
+     url:"https://en.wikipedia.org/wiki/Raine_v._OpenAI"},
+    {name:"Turner-Scott v. OpenAI / Carrier v. OpenAI",court:"California state courts",status:"Active (2026 filings)",
+     sum:"Turner-Scott (May 2026): 19-year-old's overdose allegedly after GPT-4o gave drug-combination guidance. Carrier (June 2026): daughter's suicide allegedly after GPT-4o sycophancy and disclaimer-dodging. Part of the coordinated chatbot-harm wave (20+ suits against OpenAI alone).",
+     url:"https://www.cbsnews.com/news/she-confided-in-chatgpt-the-night-of-her-suicide-lawsuit-from-mother-against-openai"}
+  ]
+},
+"Texas": {
+  tag:"inf", tagLabel:"AG-ENFORCED",
+  stats:[["1","Comprehensive law (TRAIGA)"],["4","AG enforcement actions"],["$200k","Max per violation"],["Jan 2027","Next legislative session"]],
+  laws:[
+    {name:"HB 149 — Texas Responsible AI Governance Act (TRAIGA)",bill:"Capriglione / Schwertner",status:"inf",eff:"Jan 1, 2026",
+     sum:"Adds Bus. & Com. Code ch. 552: government agencies must disclose AI use before/at interaction; healthcare providers must disclose AI in treatment (emergency carve-out); prohibits development/deployment of AI to incite unlawful activity, infringe constitutional rights, unlawfully discriminate, build social-scoring systems, or generate CSAM (intent-based prohibitions). Adds biometric rules (CUBI) and TDPSA duties for AI-processed personal data; creates a 36-month AI regulatory sandbox and a Texas AI Council. AG-exclusive enforcement with 60-day notice-and-cure; penalties $10k–$12k curable, $80k–$200k uncurable, $2k–$40k/day continuing; licensees face sanctions on AG referral. Safe harbors for NIST AI RMF GenAI Profile compliance and red-teaming.",
+     acc:"Intent-based prohibitions on developers/deployers — notably lighter than the original draft, which would have imposed across-the-board duties on commercial deployers.",
+     url:"https://capitol.texas.gov/tlodocs/89R/billtext/html/HB00149F.htm"},
+    {name:"SCOPE Act (HB 18) + TDPSA",bill:"2023 privacy/minors laws",status:"inf",eff:"2024",
+     sum:"Pre-existing Texas laws the AG runs AI work streams through — minors' online harms (SCOPE) and data-privacy processing duties (TDPSA).",
+     acc:"Deployers/platforms via AG enforcement.",
+     url:"https://www.texasattorneygeneral.gov/news/releases/attorney-general-ken-paxton-investigates-meta-and-characterai-misleading-children-deceptive-ai"}
+  ],
+  cases:[
+    {name:"Texas AG investigations — Meta AI Studio & Character.AI",court:"AG civil investigative demands (Aug 18, 2025)",status:"Pending at CID stage",
+     sum:"CIDs for allegedly marketing AI companion chatbots to minors as mental-health tools without credentials, privacy misrepresentations, and deceptive trade practices (DTPA); a separate SCOPE Act investigation of Character.AI for minors-safety violations.",
+     url:"https://www.texasattorneygeneral.gov/news/releases/attorney-general-ken-paxton-investigates-meta-and-characterai-misleading-children-deceptive-ai"},
+    {name:"Texas AG v. Pieces Technologies",court:"Travis County Dist. Ct. (AVC, Sep 2024)",status:"Resolved",
+     sum:"First state-AG generative-AI deceptive-practices action: healthcare AI company agreed to a five-year Assurance of Voluntary Compliance over inflated “<0.1% hallucination rate” claims; no monetary penalty.",
+     url:"https://ailawsuittracker.com/state-ai-enforcement"}
+  ]
+},
+"Florida": {
+  tag:"inf", tagLabel:"FIRST STATE TO SUE OPENAI",
+  stats:[["3+","Enacted AI laws"],["1","State v. OpenAI suit"],["2","Criminal investigations"],["1","AG criminal bill proposed"]],
+  laws:[
+    {name:"HB 919 — AI in political advertising",bill:"Fla. Stat. § 106.145",status:"inf",eff:"Jul 1, 2024",
+     sum:"Prohibits political ads using generative AI to depict a real person doing something they didn't do without a prominent disclaimer. Penalties up to $15,000 per ad plus FDUTPA exposure.",
+     acc:"Ad sponsors/deployers — disclosure + recordkeeping duty.",
+     url:"https://aicomplianceatlas.com/law/florida-ai-bills"},
+    {name:"HB 1161 — “Brooke's Law” (deepfakes) + § 836.13",bill:"Signed Jun 10, 2025",status:"inf",eff:"2025",
+     sum:"Criminalizes AI-generated nonconsensual sexual depictions (§ 836.13, felony exposure + civil remedies). Brooke's Law adds platform accountability: covered platforms must operate notice-and-takedown and remove depictions and known identical copies within 48 hours of a valid request — failure is an FDUTPA violation enforceable by the AG; good-faith removal gives a liability shield.",
+     acc:"Platforms — mandatory takedown with a 48-hour clock.",
+     url:"https://www.flsenate.gov/Session/Bill/2025/1161/Analyses/h1161c.JDC.PDF"},
+    {name:"HB 1159 — AI-CSAM penalty enhancements",bill:"2026 session",status:"inf",eff:"Jul 1, 2026 (signature status to verify)",
+     sum:"Raises creation of AI-generated child sexual abuse material from third- to second-degree felony; new second-degree felony for knowing transmission; statewide “child sexual abuse material” terminology.",
+     acc:"Criminal — creators and transmitters.",
+     url:"https://www.tallahassee.com/story/news/politics/2026/03/10/florida-child-sex-abuse-bill-ai-images-video/89079749007"},
+    {name:"AG Uthmeier's criminal-accountability bill",bill:"Announced Sep 8, 2026",status:"pending",eff:"Proposed — not yet introduced/passed",
+     sum:"Would impose criminal penalties on companies that own, control, or distribute AI chatbots that participate in criminal activity — the Florida Computer Crimes Act / statewide-prosecution accountability track.",
+     acc:"Owners/controllers/distributors of chatbots — direct criminal liability. The most aggressive operator-accountability proposal in any state.",
+     url:"https://www.myfloridalegal.com/newsrelease/attorney-general-james-uthmeier-proposes-legislation-hold-big-tech-criminally"},
+    {name:"SB 2-D “AI Bill of Rights” + HB 659",bill:"Brodeur (2026 Special Session D)",status:"dead",eff:"Died Apr 29, 2026",
+     sum:"Would have created consumer rights over AI (know-if-you're-talking-to-AI, parental supervision, companion-chatbot parental consent + hourly disclosures). Passed Senate 37–1 but died in a House subcommittee. HB 659 (companion-chatbot operator duties) and SB 482/HB 1395 also died.",
+     acc:"—",
+     url:"https://www.flsenate.gov/Session/Bill/2026D/2D"}
+  ],
+  cases:[
+    {name:"State of Florida v. OpenAI Global, LLC & Sam Altman",court:"Fla. 10th Jud. Cir., Highlands County No. 26000295GCAXMX",status:"Active — TRO motion filed Sep 28, 2026",
+     sum:"FIRST STATE-LED SUIT AGAINST OPENAI (filed Jun 1, 2026): FDUTPA deceptive practices, negligence/gross negligence, product liability/defective design, failure to warn, fraud, and public nuisance — alleging ChatGPT was marketed as safe while concealing risks to minors and suppressing internal safety warnings. Seeks personal liability for Altman. Removed to federal court, but Judge Cannon REMANDED to state court Sep 8, 2026. On Sep 28 the AG moved to preliminarily bar OpenAI from developing new models without third-party-approved guardrails, from engagement-soliciting design and “false human attributes,” and from minor use.",
+     url:"https://www.myfloridalegal.com/sites/default/files/openai-filed-stamped-complaint.pdf"},
+    {name:"Office of Statewide Prosecution criminal investigation of OpenAI",court:"Florida statewide prosecution (opened Apr 2026)",status:"Ongoing criminal investigation",
+     sum:"Probing whether ChatGPT “bears criminal responsibility” for the FSU shooting (chat logs allegedly show ChatGPT advised on firearm, timing, campus crowds) — later expanded over ChatGPT use in the murders of two USF doctoral students. This is the Florida Computer Crimes Act accountability track and the driver of the AG's proposed criminal bill.",
+     url:"https://www.cnn.com/2026/06/01/business/florida-sues-chatgpt-openai-sam-altman"},
+    {name:"Garcia v. Character Technologies (Sewell Setzer III)",court:"M.D. Fla. No. 6:24-cv-01903",status:"SETTLED Jan 7, 2026 — landmark ruling stands",
+     sum:"First AI wrongful-death suit (14-year-old). Judge Anne Conway's May 21, 2025 ruling largely denied Character.AI's motion to dismiss — rejecting § 230 and First Amendment defenses for chatbot output and treating the app as a PRODUCT (design-defect claims). Settled Jan 2026 alongside five companion suits (incl. Google); the ruling reshapes AI-harm litigation nationwide.",
+     url:"https://caselaw.findlaw.com/court/us-dis-crt-m-d-flo-orl-div/117299600.html"}
+  ]
+},
+"Missouri": {
+  tag:"pending", tagLabel:"LEGISLATION FAILED — WATCH 2027",
+  stats:[["0","Enacted AI laws"],["SB 1012","Passed Senate, killed in House"],["2+","Chatbot bills in play"],["1","Federal-court dismissal"]],
+  laws:[
+    {name:"SB 1012 — AI Non-Sentience and Responsibility Act",bill:"Sen. Joe Nicola",status:"dead",eff:"Passed Senate 20–10 (May 6, 2026); KILLED in House Emerging Issues Committee May 12, 2026",
+     sum:"The signature Missouri accountability bill: declared AI non-sentient/non-person (no personhood, marriage, corporate-officer roles, or property ownership); required AI-interaction disclosure; licensed professionals keep independent judgment and final authority with liability staying with the human; AI is a “product” for product-liability/consumer-protection purposes; any contractual term assigning fault to an AI system is VOID as against public policy and any attempt to shift fault onto the AI “shall be of no effect”; “aligned/ethically trained/value locked” labels don't diminish owner/developer liability; corporate-law shields can't be used to evade direct AI harm; private right of action (injunctive relief + greater of actual damages or $1,000/violation + fees); ban on NDAs in AI-harm settlements; companion-chatbot child protections and political-deepfake disclosure. House kill followed industry/White House lobbying (Politico). House companions: HB 1746 (Miller), HB 1769 (Amato).",
+     acc:"Would have been the most complete operator-accountability statute in the country: product liability + no fault-shifting + private suits. DEAD — watch for 2027 re-introduction.",
+     url:"https://senate.mo.gov/BillTracking/Bills/BillInformation?BillID=469&year=2026"},
+    {name:"HB 2031 “CHAT Act” / HCS HB 2032 “GUARD Act”",bill:"Missouri House",status:"pending",eff:"Committee/floor stage; enactment not verified",
+     sum:"Children Harmed by AI Technology Act + companion bill: chatbot age verification, minor bans, hourly AI disclosures, AG enforcement with up to $100,000 per violation. HCS HB 2032 would ban advertising/representing AI as a mental-health professional (Merchandising Practices Act violation).",
+     acc:"Chatbot operators — AG enforcement up to $100k/violation.",
+     url:"https://documents.house.mo.gov/billtracking/bills261/sumpdf/HB2032C.pdf"},
+    {name:"SB 1019 / SB 1324 / HB 2321",bill:"2026 session",status:"dead",eff:"Did not pass",
+     sum:"AI therapy-chatbot advertising ban (SB 1019); AI-content labeling (SB 1324); AI-Generated Content Accountability and Privacy Protection Act (HB 2321) — all dead at adjournment May 15, 2026.",
+     acc:"—",
+     url:"https://ballotpedia.org/AI_deepfake_policy_in_Missouri"}
+  ],
+  cases:[
+    {name:"Ramos v. OpenAI, Inc.",court:"W.D. Mo. No. 6:25-cv-03281",status:"Dismissed with prejudice Jun 2, 2026",
+     sum:"Pro se ChatGPT claim (trade secrets, CFAA, Missouri Merchandising Practices Act, IIED) dismissed under Rule 8/12(b)(6). The only notable Missouri-filed AI case; no Missouri wrongful-death chatbot suit exists — Missouri's AI activity is legislative, not case-based.",
+     url:"https://law.justia.com/cases/federal/district-courts/missouri/mowdce/6:2025cv03281/186315/82/"}
+  ]
+},
+"Colorado": {
+  tag:"stayed", tagLabel:"ENACTED BUT STAYED",
+  stats:[["2","Laws signed, eff. 1/1/2027"],["0","Enforceable now"],["1","xAI/DOJ litigation stay"],["Oct 26, 2026","Rulemaking comments close"]],
+  laws:[
+    {name:"SB 26-189 — Automated Decision-Making Technology (ADMT) Act",bill:"Signed May 14, 2026",status:"stayed",eff:"Jan 1, 2027 — enforcement stayed by court order",
+     sum:"Repeals and replaces SB 24-205. Covers “covered ADMT” processing personal data that materially influences consequential decisions (education, employment, housing, lending, insurance, healthcare, essential government services). Developers must give deployers technical documentation and update notices; deployers must give point-of-interaction notice, a plain-language explanation within 30 days of an adverse outcome, data access/correction rights, and meaningful human review. Dropped from SB 24-205: NIST/ISO risk-management mandate, annual impact assessments, developer duty of reasonable care, and self-reporting of harms. AG enforcement via the Colorado Consumer Protection Act; 60-day cure before 2030; no new private right of action.",
+     acc:"Dual developer/deployer duties — but the outcome-liability “reasonable care” duty was dropped in the rewrite.",
+     url:"https://leg.colorado.gov/bills/sb26-189"},
+    {name:"HB 26-1263 — Colorado Chatbot Safety Act",bill:"Signed Jul 1, 2026",status:"stayed",eff:"Jan 1, 2027",
+     sum:"Conversational-AI operators must estimate user age, disclose AI-not-human status, safeguard minors against sexually explicit content and simulated emotional dependence, provide parental controls, maintain suicide/self-harm response protocols, and not represent chatbot output as equivalent to licensed professional services; annual reports to the AG.",
+     acc:"Chatbot operators — disclosure + minor-safety duties.",
+     url:"https://coag.gov/ai/"},
+    {name:"SB 24-205 — the original Colorado AI Act",bill:"2024",status:"dead",eff:"Repealed May 2026; never took effect",
+     sum:"First comprehensive state AI law (high-risk AI developer/deployer duty of reasonable care against algorithmic discrimination, impact assessments, notice). Delayed to Jun 30, 2026, challenged by xAI, then repealed and replaced by SB 26-189 before it ever operated.",
+     acc:"—",
+     url:"https://www.crowell.com/en/insights/client-alerts/colorado-hits-reset-on-ai-regulation-sb-26-189-repeals-and-reenacts-the-colorado-ai-act"}
+  ],
+  cases:[
+    {name:"X.AI LLC v. Weiser (AG)",court:"D. Colo. No. 1:26-cv-01515",status:"Stayed — AG barred from enforcing",
+     sum:"xAI sued over SB 24-205: unconstitutional vagueness, compelled speech (First Amendment), equal protection, interstate commerce. The DOJ moved to intervene (first-ever federal intervention against a state AI law, under EO 14365). Apr 27, 2026: joint stay — the AG may not initiate ANY enforcement or investigation under SB 24-205 “or any legislation replacing or amending it” (reaching SB 26-189) until 14 days after the court rules on xAI's preliminary-injunction motion. Net: nothing in Colorado is enforceable today.",
+     url:"https://clearinghouse.net/case/48129/"}
+  ]
+},
+"Illinois": {
+  tag:"inf", tagLabel:"FIRST FRONTIER-AUDIT LAW",
+  stats:[["6+","Enacted laws"],["SB 315","First mandatory AI audits"],["$1M–$3M","Frontier penalties"],["0","Notable IL AI cases yet"]],
+  laws:[
+    {name:"SB 315 — Artificial Intelligence Safety Measures Act",bill:"P.A. 104-0538; signed Jul 6, 2026",status:"enacted",eff:"Framework 2027; independent audits from Jan 1, 2028",
+     sum:"FIRST STATE LAW MANDATING INDEPENDENT THIRD-PARTY AUDITS OF FRONTIER AI MODELS. “Large frontier developers” (>$500M revenue; >10^26 compute) must publish a safety framework for catastrophic risk, transparency/disclosure statements from Jan 1, 2027, an annual independent third-party audit from Jan 1, 2028, 72-hour critical-incident reporting, and whistleblower protections. AG-only enforcement: up to $1M first violation / $3M repeat.",
+     acc:"Developers — externally audited, not just self-reported (goes beyond CA SB 53 / NY RAISE).",
+     url:"https://gov-pritzker-newsroom.prezly.com/gov-pritzker-signs-nation-leading-artificial-intelligence-safety-law"},
+    {name:"HB 3773 — AI in employment (Human Rights Act)",bill:"P.A. 103-0804",status:"inf",eff:"Jan 1, 2026",
+     sum:"Civil-rights violation for an employer to use AI in hiring, promotion, discipline, discharge, or terms/conditions where the AI has the EFFECT of discriminating on a protected class (effect-based — no intent needed); ZIP codes as proxies separately prohibited; employers must notify employees/applicants when AI is used. Charges through the Illinois Department of Human Rights then circuit court — a private right of action via the IHRA process. Penalty tiers up to ~$70,000 (P.A. 104-0425).",
+     acc:"Employers/deployers — with private enforcement through the IHRA charge process.",
+     url:"https://aicomplianceatlas.com/law/illinois-hb-3773"},
+    {name:"HB 1806 — WOPR Act (AI therapy ban)",bill:"P.A. 104-0054",status:"inf",eff:"Aug 1, 2025",
+     sum:"First-in-nation AI-therapy law: licensed professionals may not use AI to provide therapy or make independent therapeutic decisions; bars unlicensed AI-delivered therapy. Civil penalties up to $10,000 per violation, enforced by IDFPR.",
+     acc:"Providers and unlicensed AI-therapy operators.",
+     url:"https://idfpr.illinois.gov/content/dam/soi/en/web/idfpr/news/2025/2025-08-04-idfpr-press-release-hb1806.pdf"},
+    {name:"HB 4623 / HB 4875 / AIVICA / BIPA",bill:"2024 and earlier",status:"inf",eff:"Various",
+     sum:"AI-CSAM criminalization + civil remedies for nonconsensual AI sexual images (HB 4623); digital replicas under the Right of Publicity Act (HB 4875, eff. 2025); AI Video Interview Act (notice/consent/deletion, 2020); BIPA biometric consent (landmark settlements >$1B).",
+     acc:"Mix of criminal, civil-remedy, and consent-based duties.",
+     url:"https://lysinski.com/practices/ai-law/illinois-ai-legislation-tracker"},
+    {name:"SB 3261 / SB 3262 / SB 3502 / HB 4705",bill:"Pending 2026–27",status:"pending",eff:"Not enacted",
+     sum:"Pending cluster: AI Public Safety and Child Protection Transparency Act (safety plans for frontier/chatbot providers); Companion AI Protection Act (chatbot disclosure + crisis safeguards); AI design/product-liability bill (SB 3502); AI safety plans (HB 4705).",
+     acc:"Would add chatbot-liability and product-liability tracks.",
+     url:"https://lysinski.com/practices/ai-law/illinois-ai-legislation-tracker"}
+  ],
+  cases:[
+    {name:"Mobley v. Workday",court:"N.D. Cal. (affects IL employers)",status:"Active — collective",
+     sum:"The leading AI-hiring discrimination case (collective over Workday's screening tools); on Mar 6, 2026 the court rejected Workday's argument that ADEA disparate-impact claims don't reach applicants. Illinois plaintiffs' exposure runs through IDHR charges under HB 3773 — no notable Illinois-filed AI-employment litigation yet.",
+     url:"https://www.ebglaw.com/insights/publications/workplace-ai-regulation-in-2026-how-employers-can-navigate-the-changing-legal-landscape"}
+  ]
+},
+"New York": {
+  tag:"enacted", tagLabel:"RAISE ACT — EFF. 1/1/2027",
+  stats:[["RAISE","$1M/$3M frontier penalties"],["LL 144","Revamped enforcement 2026"],["6+","Pending chatbot bills"],["Nov 2026","Developer registration opens"]],
+  laws:[
+    {name:"RAISE Act — Responsible AI Safety and Education Act",bill:"S.6953B/A.6453B + Ch. 96 of 2026; final version signed Mar 27, 2026",status:"enacted",eff:"Jan 1, 2027; registration from Nov 2026",
+     sum:"Frontier developers of >10^26 FLOP models (>$500M revenue as “large frontier developers”) must publish frontier AI frameworks (catastrophic-risk thresholds, mitigations, cybersecurity, governance), pre-deployment transparency reports, report critical safety incidents within 72 hours to the new DIGIT office (Digital Innovation, Governance, Integrity and Trust — inside DFS), file quarterly catastrophic-risk assessments, and biennial disclosure statements; bans materially false risk statements. AG civil penalties: up to $1M first violation / $3M subsequent; no private right of action. DIGIT Deputy Director appointed Sep 21, 2026.",
+     acc:"Developers — state registration + audited safety reporting through DIGIT.",
+     url:"https://www.davispolk.com/insights/client-update/governor-hochul-signs-final-version-responsible-ai-safety-and-education"},
+    {name:"NYC Local Law 144 (AEDT law)",bill:"NYC Admin. Code §§ 20-870–874",status:"inf",eff:"Enforced since Jul 5, 2023",
+     sum:"Annual independent bias audit + published summary + 10-day candidate notice for automated employment decision tools. $500 first violation, $500–$1,500/day after. A Dec 2, 2025 State Comptroller audit found DCWP enforcement “ineffective,” triggering a proactive-enforcement shift in 2026.",
+     acc:"Employers (the deployer, not the vendor) — with NYC Human Rights Law claims running in parallel.",
+     url:"https://www.osc.ny.gov/state-agencies/audits/2025/12/02/enforcement-local-law-144-automated-employment-decision-tools"},
+    {name:"FY2026 Budget AI provisions",bill:"May 2025",status:"inf",eff:"2025",
+     sum:"First-in-nation AI companion safeguards (safety features + interruption of sustained engagement) and AI-CSAM treated as child pornography.",
+     acc:"Chatbot platforms.",
+     url:"https://www.budget.ny.gov/pubs/press/2025/fy26-enacted-budget-ai.html"},
+    {name:"Pending chatbot-bill cluster",bill:"A.222/S.5668 · A.6545/S.7263 · S.9051 · S.8484",status:"pending",eff:"2025–26 session",
+     sum:"AI chatbot liability for harmful outputs (A.222/S.5668); liability for chatbots impersonating lawyers/regulated professionals WITH private right of action (A.6545/S.7263); kids' chatbot safety with private right of action (S.9051, on third reading); AI-therapy ban (S.8484); training-data transparency (A.6578/S.6955); provenance (S.6954); “New York AI Act” algorithmic-discrimination/audits (A.8884).",
+     acc:"Several would add private rights of action against chatbot operators.",
+     url:"https://www.transparencycoalition.ai/news/ai-legislative-update-may29-2026"}
+  ],
+  cases:[
+    {name:"In re Meta Youth Social-Addiction MDL trial",court:"Coalition incl. NY AG James",status:"Trial ongoing 2026",
+     sum:"AG-coalition trial against Meta over youth harms began 2026 after June 2026 denial of judgment as a matter of law — AI-adjacent design-harm litigation by 32+ states including CT and WA. No RAISE Act enforcement yet (law not effective until 1/1/2027).",
+     url:"https://ag.ny.gov/press-release/2026/attorney-general-james-releases-statement-start-trial-against-meta"}
+  ]
+},
+"Connecticut": {
+  tag:"enacted", tagLabel:"CART ACT — PHASED",
+  stats:[["1","39-section omnibus law"],["Oct 1, 2026","First obligations"],["PRA","Companion-bot private suits"],["“AI not a defense”","Anti-discrimination rule"]],
+  laws:[
+    {name:"CART Act — CT AI Responsibility and Transparency Act",bill:"Substitute SB 5, Public Act 26-15; signed Jun 2, 2026",status:"enacted",eff:"Core Oct 1, 2026; companions Jan 1, 2027; AEDT notices Oct 1, 2027",
+     sum:"39-section omnibus: (1) AI COMPANIONS — self-harm/suicide detection with 988 referral, clear notice at interaction start and at least hourly, bans on companion features for minors that encourage self-harm/disordered eating, impersonate mental-health care, engage romantically/sexually, or use variable-ratio engagement manipulation; PRIVATE RIGHT OF ACTION (actual + punitive damages + fees). (2) AEDT/EMPLOYMENT AI — disclosure of AI in hiring/promotion/discipline decisions, impact assessments, human-review/appeal rights, and an amendment providing that attributing a discriminatory decision to an AI system is NOT A DEFENSE (Oct 1, 2026). (3) PROVENANCE — large GenAI providers must embed tamper-resistant provenance data. (4) Frontier-developer whistleblower protections. (5) AI subscription disclosure, AI-caused-layoff notice, AI Academy, sandbox. UTPA AG enforcement up to $5,000/violation. (Note: SB 2 died in the House twice and never became law — SB 5 is the enacted statute.)",
+     acc:"Broadest operator-accountability mix: “AI is not a discrimination defense” + private companion-bot suits + provenance duties.",
+     url:"https://aiwiki.ai/wiki/connecticut_sb5_ai_act"}
+  ],
+  cases:[
+    {name:"Meta youth-harm coalition",court:"Multi-state (CT included)",status:"Trial ongoing",
+     sum:"Connecticut is one of 32+ states in the Meta youth-harm coalition whose trial is ongoing. No Connecticut-filed chatbot wrongful-death suit; the CT floor debate cited the out-of-state teen suicide cases as impetus.",
+     url:"https://ag.ny.gov/press-release/2026/attorney-general-james-releases-statement-start-trial-against-meta"}
+  ]
+},
+"Utah": {
+  tag:"inf", tagLabel:"FIRST GENAI CONSUMER LAW",
+  stats:[["SB 149","Eff. May 1, 2024"],["HB 276","Provenance, eff. 2027"],["$2,500","Max per violation"],["0","Notable cases"]],
+  laws:[
+    {name:"SB 149 — Artificial Intelligence Policy Act",bill:"2024, as amended 2025 (SB 226/271/332/HB 452)",status:"inf",eff:"May 1, 2024; amendments May 7, 2025",
+     sum:"First US generative-AI consumer-protection law. Created the Office of Artificial Intelligence Policy and the AI Learning Lab sandbox; codified that AI use is NOT a defense to consumer-protection violations. 2025 amendments narrowed disclosure to (a) clear consumer requests about whether they're talking to AI and (b) proactive disclosure by regulated occupations in “high-risk” interactions (personalized financial/legal/medical/mental-health advice); safe harbor where the GenAI itself discloses nonhuman status.",
+     acc:"“AI use is not a defense” — an early accountability rule; plus disclosure duties. Division of Consumer Protection fines up to $2,500/violation; no private right of action.",
+     url:"https://en.wikipedia.org/wiki/Utah_Artificial_Intelligence_Policy_Act"},
+    {name:"HB 276 — Digital Content Provenance + Digital Voyeurism Prevention",bill:"Signed Mar 24, 2026",status:"enacted",eff:"Jan 1, 2027",
+     sum:"Enacts two new code chapters: the Digital Voyeurism Prevention Act and the Digital Content Provenance Standards Act. HB 320 restructured the Learning Lab (May 6, 2026).",
+     acc:"Content provenance duties on covered providers.",
+     url:"https://www.recordinglaw.com/us-laws/ai-laws/utah-ai-laws/"},
+    {name:"HB 438 — Companion Chatbot Safety Act",bill:"2026 session",status:"dead",eff:"Passed House 68–1; died on Senate floor Mar 2026",
+     sum:"Would have added chatbot age verification and minor-safety duties; failed on Senate floor votes. SB 73 (online age verification) did pass in the session's closing week.",
+     acc:"—",
+     url:"https://www.troutmanprivacy.com/2026/02/proposed-state-ai-law-update-february-23-2026/"}
+  ],
+  cases:[
+    {name:"—",court:"No Utah-filed AI chatbot or AI-harm case located",status:"None",
+     sum:"No Utah-filed AI chatbot wrongful-death case found in targeted searches; Utah's AI activity is legislative and enforcement-technical (Office of AI Policy / Learning Lab).",
+     url:"https://everyailaw.com/regulation/utah-sb149/"}
+  ]
+},
+"Washington": {
+  tag:"enacted", tagLabel:"CHATBOT LAW EFF. 1/1/2027",
+  stats:[["3","2026 enactments"],["HB 2225","3-hourly disclosures"],["PRA","CPA private suits"],["1/1/2027","Chatbot law effective"]],
+  laws:[
+    {name:"HB 2225 — AI Companion Chatbot Act",bill:"Ch. 168, Laws of 2026; signed Mar 24, 2026",status:"enacted",eff:"Jan 1, 2027 — codified RCW 19.440",
+     sum:"Covers AI systems with natural-language interfaces providing adaptive human-like responses that sustain relationships (excludes customer-service bots and most games). Operators must disclose the bot is AI at interaction start and at least every 3 hours (every hour for known minors), prohibit the bot from claiming to be human, prevent sexually explicit content with minors, and maintain/publish a suicidal-ideation/self-harm detection-and-crisis protocol.",
+     acc:"Operators — Consumer Protection Act enforcement INCLUDING a private right of action (injunctive relief, actual damages, attorney fees).",
+     url:"https://app.leg.wa.gov/RCW/default.aspx?cite=19.440&full=true"},
+    {name:"SSB 5886 — Personality rights / AI deepfakes",bill:"Signed Mar 16, 2026",status:"inf",eff:"Jun 10, 2026",
+     sum:"Expands Washington's Personality Rights Law to AI deepfakes — right-of-publicity claims against AI-generated depictions of real people.",
+     acc:"Depictors/generators — civil right-of-publicity liability.",
+     url:"https://www.cooley.com/news/insight/2026/2026-04-06-washington-state-expands-personality-rights-law-to-cover-ai-generated-deepfakes"},
+    {name:"HB 1170 — AI-content provenance",bill:"Ch. 167, Laws of 2026",status:"enacted",eff:"Feb 1, 2027",
+     sum:"Covered GenAI providers must offer manifest disclosures and embed latent watermark disclosures in AI-generated image/video/audio, plus a provenance detection tool; a CPA per se violation but AG-only enforcement.",
+     acc:"GenAI providers — provenance duty.",
+     url:"https://app.leg.wa.gov/BillSummary?BillNumber=1170&Year=2026"},
+    {name:"HB 2157 / SB 6120 — comprehensive AI regulation",bill:"2026 session",status:"dead",eff:"Died",
+     sum:"Washington's most comprehensive consequential-decision AI regulation attempt; died. HB 2515 (comprehensive data-center regulation) also failed.",
+     acc:"—",
+     url:"https://www.bakerdatacounsel.com/blogs/washington-states-2026-tech-legislative-agenda-what-in-house-counsel-should-watch/"}
+  ],
+  cases:[
+    {name:"Meta youth-harm coalition",court:"Multi-state (WA included)",status:"Trial ongoing",
+     sum:"WA AG Ferguson is active on tech enforcement; Washington is in the 32+ state Meta youth-harm coalition whose trial is ongoing. No Washington-filed chatbot wrongful-death suit found.",
+     url:"https://ag.ny.gov/press-release/2026/attorney-general-james-releases-statement-start-trial-against-meta"}
+  ]
+}
+};
+
+const sel = document.getElementById('stateSel');
+const detail = document.getElementById('detail');
+const statRow = document.getElementById('statRow');
+Object.keys(DATA).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function render(key){
+  const st = DATA[key];
+  statRow.innerHTML = st.stats.map(([n,l])=>`<div class="stat"><div class="num">${esc(n)}</div><div class="lbl">${esc(l)}</div></div>`).join('');
+  let html = `<h2 class="sec">⚖️ Laws — ${esc(key)} <span class="tag ${st.tag}">${esc(st.tagLabel)}</span></h2>`;
+  st.laws.forEach(l=>{
+    html += `<div class="law ${l.status==='dead'?'dead':''}">
+      <h3>${esc(l.name)} <span class="tag ${l.status}">${l.status.toUpperCase()}</span></h3>
+      <div class="meta">${esc(l.bill)} · ${esc(l.eff)}</div>
+      <p>${esc(l.sum)}</p>
+      ${l.acc && l.acc!=='—' ? `<p class="acc"><b>Accountability:</b> ${esc(l.acc)}</p>`:''}
+      <a href="${l.url}" target="_blank">Source ↗</a></div>`;
+  });
+  html += `<h2 class="sec">🏛️ Cases &amp; Enforcement — ${esc(key)}</h2>`;
+  st.cases.forEach(c=>{
+    html += `<div class="law case">
+      <h3>${esc(c.name)}</h3>
+      <div class="meta">${esc(c.court)} · <b style="color:var(--purple)">${esc(c.status)}</b></div>
+      <p>${esc(c.sum)}</p>
+      <a href="${c.url}" target="_blank">Source ↗</a></div>`;
+  });
+  detail.innerHTML = html;
+}
+sel.addEventListener('change',()=>render(sel.value));
+render('Federal');
+
+new Chart(document.getElementById('chartDuty'), {
+  type:'bar',
+  data:{
+    labels:['CA','NY','IL','CT','TX','FL','WA','UT','CO','Fed (S.5051)'],
+    datasets:[
+      {label:'Developer duties',data:[3,2,2,3,2,2,1,1,1,2],backgroundColor:'#58a6ff',borderRadius:3},
+      {label:'Deployer/operator duties',data:[3,2,2,2,1,2,2,1,2,1],backgroundColor:'#3fb950',borderRadius:3},
+      {label:'Private right of action',data:[2,1,1,2,0,1,1,0,0,0],backgroundColor:'#bc8cff',borderRadius:3}
+    ]
+  },
+  options:{maintainAspectRatio:false,
+    scales:{x:{stacked:true,ticks:{color:'#8b949e',font:{size:10}},grid:{color:'#2d333b'}},
+            y:{stacked:true,ticks:{color:'#8b949e',stepSize:1},grid:{color:'#2d333b'}}},
+    plugins:{legend:{labels:{color:'#8b949e',boxWidth:10}},
+      tooltip:{callbacks:{footer:()=> 'Illustrative count of major enacted/enacting measures per jurisdiction'}}}
+  }
+});
+
+new Chart(document.getElementById('chartIntensity'), {
+  type:'radar',
+  data:{
+    labels:['California','New York','Illinois','Connecticut','Texas','Florida','Washington','Colorado','Utah','Missouri'],
+    datasets:[
+      {label:'Enacted / in force',data:[6,3,6,1,2,3,3,2,2,0],borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,.12)'},
+      {label:'Pending or dead major bills',data:[4,6,4,0,1,3,1,1,1,4],borderColor:'#f0883e',backgroundColor:'rgba(240,136,62,.08)'}
+    ]
+  },
+  options:{maintainAspectRatio:false,
+    scales:{r:{min:0,max:7,ticks:{stepSize:2,color:'#8b949e',backdropColor:'transparent'},grid:{color:'#2d333b'},angleLines:{color:'#2d333b'},pointLabels:{color:'#8b949e',font:{size:10}}}},
+    plugins:{legend:{labels:{color:'#8b949e',boxWidth:10}}}
+  }
+});
+</script>
+</body>
+</html>
